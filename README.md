@@ -1,8 +1,15 @@
-# Spotify ad restart (Android, no root)
+# Spotify ad skipper for Android (no root, Spotify unmodified)
 
-Watches Spotify's media session. When an ad plays, it force-stops Spotify, reopens it, and presses play. Spotify reopens on its last queue, so the same playlist continues.
+Runs alongside the regular Spotify app, modelled on Spicetify's adblock where Android allows it:
 
-Android won't let one app close another without root. [Shizuku](https://shizuku.rikka.app/) gives apps ADB-level access, and it can restart itself after a reboot. Once set up, nothing needs a person: not per ad, and not after a reboot.
+| Spicetify (desktop) | This (Android) |
+|---|---|
+| Ad audio never plays | Media is muted within ~0.5s of an ad starting |
+| Ad slots cleared, playback continues | Spotify is force-restarted once, which drops the ad, and resumes the same playlist. If the ad survives the restart, it stays muted until the ad ends, without restarting again. |
+| No interruption | You're returned to the app you were using, and volume is restored when the next song starts |
+| Banners and upgrade buttons hidden | Not possible: Android doesn't let an outside app hide parts of another app's screen |
+
+Spicetify can do more because it patches the desktop app from inside. Android doesn't allow that without modifying Spotify itself.
 
 ## One-time setup
 
