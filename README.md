@@ -23,6 +23,7 @@ Spicetify can do more because it patches the desktop app from inside. Android do
    cp <export folder>/rish <export folder>/rish_shizuku.dex ~/
    sed -i 's/PKG/com.termux/' ~/rish
    chmod +x ~/rish
+   chmod 400 ~/rish_shizuku.dex   # Android 14+ refuses to load a writable dex
    ```
    Make sure the edited `rish` line reads `RISH_APPLICATION_ID="com.termux"`. When Shizuku asks whether to allow Termux, choose **Allow all the time**.
 6. **Download and set up auto-start.** In Termux:
