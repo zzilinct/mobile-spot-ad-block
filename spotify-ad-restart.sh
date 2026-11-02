@@ -1,71 +1,63 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Restart Spotify on Android when an ad plays, then resume the same playlist. No root, no per-ad input.
-# Runs in Termux; privileged commands go through Shizuku's `rish` (see README for one-time setup).
+# Runs in Termux; the watcher runs inside one long-lived Shizuku `rish` shell (see README for setup).
 #   ./spotify-ad-restart.sh            run
-#   ./spotify-ad-restart.sh debug      print what Spotify reports each poll (use to tune AD_PATTERN)
+#   ./spotify-ad-restart.sh debug      also print every track Spotify reports
 #   ./spotify-ad-restart.sh selftest   check the ad matcher
 
-PKG=com.spotify.music
 RISH=${RISH:-$HOME/rish}
-# Calibration knob: Spotify's media "description" is "Title, Artist, Album".
-# Ads show up as "Advertisement, ..." or with Spotify itself / nobody as the artist.
-AD_PATTERN=${AD_PATTERN:-'^Advertisement|^Spotify,|, Spotify(,|$)|^[^,]*, ,'}
+# dumpsys shows Spotify's track as "Title, Artist, Album". Ads use a localized "Advertisement" title
+# (list from SpotiFade) or Spotify itself / no one as the artist.
+# ponytail: text match only. The exact flags (METADATA_KEY_ADVERTISEMENT, spotify:ad media id) aren't
+# visible from a shell; reading them needs a NotificationListener app.
+AD_PATTERN=${AD_PATTERN:-'^(advertisement|advertentie|annonce|anuncio|anúncio|werbung|pubblicità|reklam|reklama|reklame|mainos|spotify ad|广告|広告|광고)(,|$)|^[^,]*, (spotify|null|)(,|$)'}
 
-is_ad() { [[ -n $1 ]] && grep -Eq "$AD_PATTERN" <<<"$1"; }
+is_ad() { grep -Eiq "$AD_PATTERN" <<<"$1"; }
 
-sh_() { "$RISH" -c "$*" 2>/dev/null; }
+if [[ $1 == selftest ]]; then
+  is_ad "Advertisement, Spotify, " && is_ad "Werbung, Some Brand, null" && is_ad "Big Brand, Spotify, null" \
+    && is_ad "Big Brand, null, null" && ! is_ad "One More Time, Daft Punk, Discovery" \
+    && ! is_ad "Annonce Moi, Some Artist, Album" && ! is_ad "" && echo ok || { echo FAIL; exit 1; }
+  exit
+fi
 
-# Prints "<state> <description>" for Spotify's media session (3 = playing), or nothing if Spotify isn't running.
-# One rish call per poll: each call starts a JVM, so keep them few.
-spotify_session() {
-  sh_ "pidof $PKG >/dev/null && dumpsys media_session" | awk -v pkg="package=$PKG" '
-    index($0, pkg) { s = 1 }
-    s && /state=PlaybackState/ { match($0, /state=[0-9]+/); st = substr($0, RSTART + 6, RLENGTH - 6) }
-    s && /metadata:/ { sub(/.*description=/, ""); print st " " $0; exit }'
+# Runs as the shell user via rish. mksh + toybox only.
+read -r -d '' WATCHER <<SH
+AD='$AD_PATTERN'
+DEBUG='$([[ $1 == debug ]] && echo 1)'
+now() {
+  d=\$(dumpsys media_session | sed -n '/package=com.spotify.music/,/metadata:/p')
+  st=\$(echo "\$d" | grep -o 'state=PlaybackState {state=[0-9]*' | head -1 | grep -o '[0-9]*\$')
+  desc=\$(echo "\$d" | sed -n 's/.*metadata:.*description=//p' | head -1)
 }
-
-restart() {
-  sh_ am force-stop "$PKG"
-  sleep 1
-  # Spotify reopens on the last queue, which is the playlist the ad interrupted.
-  sh_ monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-  for _ in $(seq 15); do
-    sleep 2
-    [[ $(spotify_session) == 3\ * ]] && return
-    sh_ input keyevent 126   # KEYCODE_MEDIA_PLAY
-  done
-  echo "Spotify did not resume within 30s"
-}
-
-selftest() {
-  is_ad "Advertisement, Spotify, " || exit 1
-  is_ad "Big Brand, Spotify, " || exit 1
-  is_ad "Big Brand, , " || exit 1
-  ! is_ad "One More Time, Daft Punk, Discovery" || exit 1
-  ! is_ad "" || exit 1
-  echo ok
-}
-
-[[ $1 == selftest ]] && selftest && exit
-
-command -v termux-wake-lock >/dev/null && termux-wake-lock
-
-# After a reboot Shizuku starts itself once Wi-Fi is up; wait for it instead of giving up.
-until [[ $(sh_ echo ok) == ok ]]; do sleep 15; done
-echo "$(date +%T) Shizuku ready, watching Spotify"
-
+is_ad() { [ -n "\$desc" ] && echo "\$desc" | grep -Eiq "\$AD"; }
+echo "watching Spotify"
 last=
 while :; do
-  cur=$(spotify_session)
-  if [[ -z $cur ]]; then
-    # Spotify not running, or Shizuku died (e.g. reboot without Wi-Fi). Back off, keep trying.
-    sleep 5; continue
+  now
+  [ -n "\$DEBUG" ] && [ "\$desc" != "\$last" ] && echo "track: \$st \$desc"
+  last=\$desc
+  if [ "\$st" = 3 ] && is_ad; then
+    echo "\$(date +%T) ad: \$desc -> restarting"
+    am force-stop com.spotify.music
+    am start -n com.spotify.music/.MainActivity >/dev/null
+    # Spotify reopens on its last queue (the playlist the ad interrupted). MEDIA_PLAY never pauses, so repeat it until music plays.
+    i=0
+    while [ \$i -lt 60 ]; do
+      sleep 0.5; i=\$((i + 1))
+      now
+      [ "\$st" = 3 ] && ! is_ad && break
+      [ \$((i % 2)) = 0 ] && input keyevent 126
+    done
+    echo "\$(date +%T) resumed: \$desc"
   fi
-  [[ $1 == debug && $cur != "$last" ]] && echo "$cur"
-  last=$cur
-  if [[ $cur == 3\ * ]] && is_ad "${cur#3 }"; then
-    echo "$(date +%T) ad: ${cur#3 } -> restarting"
-    restart
-  fi
-  sleep 2
+  sleep 0.5
+done
+SH
+
+command -v termux-wake-lock >/dev/null && termux-wake-lock
+# rish exits if Shizuku isn't running yet (after boot it starts once Wi-Fi is up) or dies; just retry.
+while :; do
+  "$RISH" -c "$WATCHER"
+  sleep 10
 done

@@ -28,11 +28,13 @@ Android won't let one app close another without root. [Shizuku](https://shizuku.
 7. Android settings, Apps: set **Termux** and **Shizuku** battery usage to **Unrestricted** so Android doesn't kill them in the background.
 8. Reboot to check that it starts on its own, or run `~/spotify-ad-restart.sh` to start it now.
 
-## Once: confirm what an ad looks like
+## Ad detection
 
-Run `~/spotify-ad-restart.sh debug` and let an ad play. It prints what Spotify reports, for example `3 Advertisement, Spotify, `. If ads aren't being caught, put a regex that matches them in the boot script:
+Android hides the exact ad flag from shell tools, so the script reads the track text, `Title, Artist, Album`. It's treated as an ad when the title is "Advertisement" in any of 15 languages (list taken from [SpotiFade](https://github.com/SkelosJS/spotifade-android)), or when the artist is `Spotify` or missing. It checks every 0.5s.
+
+To see what Spotify reports, run `~/spotify-ad-restart.sh debug`. If an ad ever gets through, add a regex for it in the boot script:
 ```
-AD_PATTERN='^Advertisement|your pattern' ~/spotify-ad-restart.sh &
+AD_PATTERN='<pattern>' ~/spotify-ad-restart.sh &
 ```
 
 ## Limits
