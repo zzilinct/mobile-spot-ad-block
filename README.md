@@ -25,16 +25,15 @@ Spicetify can do more because it patches the desktop app from inside. Android do
    chmod +x ~/rish
    ```
    Make sure the edited `rish` line reads `RISH_APPLICATION_ID="com.termux"`. When Shizuku asks whether to allow Termux, choose **Allow all the time**.
-6. **Download the script.** On your phone, open this link in a browser where you're signed in to GitHub (the repo is private):
-   **https://github.com/zzilinct/mobile-spot-ad-block/raw/ccr-c74084f3-q4dmfs/spotify-ad-restart.sh**
-   It saves to Downloads. Then in Termux:
+6. **Download and set up auto-start.** In Termux:
    ```
-   cp ~/storage/downloads/spotify-ad-restart.sh ~/
+   curl -fsSL https://raw.githubusercontent.com/zzilinct/mobile-spot-ad-block/ccr-c74084f3-q4dmfs/spotify-ad-restart.sh -o ~/spotify-ad-restart.sh
    chmod +x ~/spotify-ad-restart.sh
    mkdir -p ~/.termux/boot
    printf '#!/data/data/com.termux/files/usr/bin/sh\n~/spotify-ad-restart.sh &\n' > ~/.termux/boot/start
    chmod +x ~/.termux/boot/start
    ```
+   Run the same `curl` line again later to update.
 7. Android settings, Apps: set **Termux** and **Shizuku** battery usage to **Unrestricted** so Android doesn't kill them in the background.
 8. Reboot to check that it starts on its own, or run `~/spotify-ad-restart.sh` to start it now.
 
