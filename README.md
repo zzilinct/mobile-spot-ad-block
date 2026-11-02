@@ -1,43 +1,40 @@
 # Spotify ad restart (Android, no root)
 
-Android won't let one app close another. ADB can, and Termux can run ADB against its own phone over wireless debugging. This script watches Spotify's media session. When an ad plays, it force-stops Spotify, reopens it, and presses play. Spotify reopens on its last queue, so the same playlist continues.
+Watches Spotify's media session. When an ad plays, it force-stops Spotify, reopens it, and presses play. Spotify reopens on its last queue, so the same playlist continues.
+
+Android won't let one app close another without root. [Shizuku](https://shizuku.rikka.app/) gives apps ADB-level access, and it can restart itself after a reboot. Once set up, nothing needs a person: not per ad, and not after a reboot.
 
 ## One-time setup
 
-1. Install **Termux** and **Termux:Boot** from F-Droid. The Play Store versions are outdated.
-2. In Termux: `pkg install android-tools termux-api`
-3. Turn on Developer options (tap Build number 7 times), then **Wireless debugging** (you need to be on Wi-Fi).
-4. Tap **Pair device with pairing code**. Use split screen or a notification so the pairing dialog stays open, then in Termux run:
+1. Install **Termux**, **Termux:Boot** and **Termux:API** from F-Droid, and **Shizuku** from the Play Store or GitHub.
+2. In Termux: `pkg install termux-api`
+3. Developer options: turn on **Wireless debugging** and **Disable adb authorization timeout**. Without the second one, Android drops the pairing after 7 days.
+4. In Shizuku: start it through **Wireless debugging** (pair once with the code), then turn on **Start on boot**. If asked to grant `WRITE_SECURE_SETTINGS`, follow Shizuku's prompt.
+5. In Shizuku, tap **Use Shizuku in terminal apps**, then **Export files** to a folder. In Termux:
    ```
-   adb pair localhost:<pairing port> <code>
-   adb connect localhost:<port shown on the Wireless debugging screen>
-   adb tcpip 5555
+   termux-setup-storage
+   cp <export folder>/rish <export folder>/rish_shizuku.dex ~/
+   sed -i 's/PKG/com.termux/' ~/rish
+   chmod +x ~/rish
    ```
-   `adb tcpip 5555` keeps ADB open on port 5555 even after you leave Wi-Fi, until the phone reboots.
-5. Copy `spotify-ad-restart.sh` to `~/` in Termux and run `chmod +x ~/spotify-ad-restart.sh`.
+   Make sure the edited `rish` line reads `RISH_APPLICATION_ID="com.termux"`. When Shizuku asks whether to allow Termux, choose **Allow all the time**.
+6. Copy `spotify-ad-restart.sh` to `~/`, then:
+   ```
+   chmod +x ~/spotify-ad-restart.sh
+   mkdir -p ~/.termux/boot
+   printf '#!/data/data/com.termux/files/usr/bin/sh\n~/spotify-ad-restart.sh &\n' > ~/.termux/boot/start
+   chmod +x ~/.termux/boot/start
+   ```
+7. Android settings, Apps: set **Termux** and **Shizuku** battery usage to **Unrestricted** so Android doesn't kill them in the background.
+8. Reboot to check that it starts on its own, or run `~/spotify-ad-restart.sh` to start it now.
 
-## Run
+## Once: confirm what an ad looks like
 
+Run `~/spotify-ad-restart.sh debug` and let an ad play. It prints what Spotify reports, for example `3 Advertisement, Spotify, `. If ads aren't being caught, put a regex that matches them in the boot script:
 ```
-~/spotify-ad-restart.sh
+AD_PATTERN='^Advertisement|your pattern' ~/spotify-ad-restart.sh &
 ```
 
-## Auto-start
+## Limits
 
-```
-mkdir -p ~/.termux/boot
-printf '#!/data/data/com.termux/files/usr/bin/sh\n~/spotify-ad-restart.sh &\n' > ~/.termux/boot/start
-chmod +x ~/.termux/boot/start
-```
-
-The script idles until Spotify is running, then starts watching.
-
-**After every reboot**, redo step 4 without the pairing: turn on Wireless debugging, run `adb connect` with the port shown, then `adb tcpip 5555`. Android shuts ADB down on reboot and only root avoids that.
-
-## If ads aren't caught
-
-Run `~/spotify-ad-restart.sh debug` and let an ad play. It prints what Spotify reports, for example `3 Advertisement, Spotify, `. If an ad looks different, set `AD_PATTERN` to a regex that matches it:
-
-```
-AD_PATTERN='^Advertisement|your pattern' ~/spotify-ad-restart.sh
-```
+- Shizuku starts after boot only once the phone is on **Wi-Fi**. Until then the script waits and starts working as soon as Wi-Fi connects. After that it keeps working on mobile data until the next reboot.
