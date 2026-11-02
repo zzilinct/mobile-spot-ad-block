@@ -1,25 +1,43 @@
-# Spotify ad restart (Windows desktop)
+# Spotify ad restart (Android, no root)
 
-Watches the Spotify desktop window title. When an ad starts, it kills Spotify, reopens it on the playlist you were listening to, and presses play.
+Android won't let one app close another. ADB can, and Termux can run ADB against its own phone over wireless debugging. This script watches Spotify's media session. When an ad plays, it force-stops Spotify, reopens it, and presses play. Spotify reopens on its last queue, so the same playlist continues.
 
-iOS and Android don't let one app close another, so this is desktop only.
+## One-time setup
 
-## Setup
+1. Install **Termux** and **Termux:Boot** from F-Droid. The Play Store versions are outdated.
+2. In Termux: `pkg install android-tools termux-api`
+3. Turn on Developer options (tap Build number 7 times), then **Wireless debugging** (you need to be on Wi-Fi).
+4. Tap **Pair device with pairing code**. Use split screen or a notification so the pairing dialog stays open, then in Termux run:
+   ```
+   adb pair localhost:<pairing port> <code>
+   adb connect localhost:<port shown on the Wireless debugging screen>
+   adb tcpip 5555
+   ```
+   `adb tcpip 5555` keeps ADB open on port 5555 even after you leave Wi-Fi, until the phone reboots.
+5. Copy `spotify-ad-restart.sh` to `~/` in Termux and run `chmod +x ~/spotify-ad-restart.sh`.
 
-1. Install Python 3 from python.org.
-2. `python spotify_ad_restart.py --install` adds the script to Windows startup. It waits in the background and starts working when you open Spotify.
-3. Start it now without logging out: `pythonw spotify_ad_restart.py`
+## Run
 
-## Remembering the playlist
+```
+~/spotify-ad-restart.sh
+```
 
-By default it relies on Spotify reopening its last queue, which is normally the same playlist. To record the exact playlist and reopen it directly:
+## Auto-start
 
-1. `pip install spotipy`
-2. Create an app at https://developer.spotify.com/dashboard and add the redirect URI `http://127.0.0.1:8888/callback`.
-3. Set the user environment variable `SPOTIPY_CLIENT_ID` to the app's client ID.
-4. Run `python spotify_ad_restart.py` once in a console and approve the login in your browser. The token is saved next to the script.
+```
+mkdir -p ~/.termux/boot
+printf '#!/data/data/com.termux/files/usr/bin/sh\n~/spotify-ad-restart.sh &\n' > ~/.termux/boot/start
+chmod +x ~/.termux/boot/start
+```
 
-## Limitations
+The script idles until Spotify is running, then starts watching.
 
-- Ads are detected from the window title. Songs show `Artist - Track`; an ad shows `Advertisement` or the advertiser's name. An ad titled just `Spotify` looks the same as paused and won't be caught.
-- Podcast episodes without ` - ` in their title look like ads. Stop the script while listening to podcasts.
+**After every reboot**, redo step 4 without the pairing: turn on Wireless debugging, run `adb connect` with the port shown, then `adb tcpip 5555`. Android shuts ADB down on reboot and only root avoids that.
+
+## If ads aren't caught
+
+Run `~/spotify-ad-restart.sh debug` and let an ad play. It prints what Spotify reports, for example `3 Advertisement, Spotify, `. If an ad looks different, set `AD_PATTERN` to a regex that matches it:
+
+```
+AD_PATTERN='^Advertisement|your pattern' ~/spotify-ad-restart.sh
+```
